@@ -1,0 +1,22 @@
+# --- Phase 0/1: data ingestion, EDA -----------------------------------
+requests==2.34.2
+pandas==3.0.3
+numpy==2.5.1
+pytest==9.1.1
+
+# --- Phase 1: EDA plotting + inter-annotator agreement (Cohen's kappa) -
+scikit-learn>=1.5
+matplotlib>=3.9
+seaborn>=0.13
+
+# --- Phase 3+: model training -------------------------------------------
+# Installed just before Phase 3 rather than up front -- torch is a large,
+# slow download and Phases 0-2 (ingestion/EDA/reconciliation) don't need it.
+torch>=2.3
+transformers>=4.44
+accelerate>=0.33
+seqeval>=1.2       # span-level NER metrics, useful as a secondary sanity check
+
+# --- Notebook deliverable -------------------------------------------------
+jupyter>=1.0
+ipykernel>=6.29

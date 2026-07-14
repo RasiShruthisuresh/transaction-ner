@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Data cache (downloaded from the dataset API; re-fetchable, and large)
+data_cache/
+*.jsonl
+
+# Model artifacts / checkpoints (large binaries; not committed)
+checkpoints/
+runs/
+*.pt
+*.bin
+*.safetensors
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Env
+.env
