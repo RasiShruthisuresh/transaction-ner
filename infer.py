@@ -17,6 +17,7 @@ from fields import extract_fields
 from model import build_model, build_tokenizer
 from predict import predict_all
 from reconcile import reconcile_big_three
+from recurring import detect_recurring
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,17 @@ def load_checkpoint(ckpt_path):
 
 
 def predict_fields_for_df(model, tokenizer, df, model_config, device, batch_size: int = 32) -> dict[str, dict[str, str]]:
+    """Model predictions for the 3 learnable fields, rule-based override
+    for recurring_flag (see recurring.py -- there's no training signal
+    for this field, so the model's own recurring_flag output, always
+    empty, is discarded in favor of the keyword detector)."""
     tags = predict_all(model, tokenizer, df["tokens"].tolist(), device, batch_size=batch_size, max_length=model_config.max_length)
-    return {tx_id: extract_fields(toks, t) for tx_id, toks, t in zip(df["id"], df["tokens"], tags)}
+    fields = {}
+    for tx_id, toks, t in zip(df["id"], df["tokens"], tags):
+        f = extract_fields(toks, t)
+        f["recurring_flag"] = detect_recurring(toks)
+        fields[tx_id] = f
+    return fields
 
 
 def score_on_val(ckpt_path, batch_size: int = 32, device=None) -> dict:

@@ -30,3 +30,6 @@ Thumbs.db
 
 # Env
 .env
+
+# Personal reference notes (not part of the graded repo)
+APPROACH_NOTES.md

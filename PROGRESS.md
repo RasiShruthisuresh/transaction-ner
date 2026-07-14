@@ -3,7 +3,7 @@
 Read this file (and `CLAUDE.md`) at the start of any new session before doing
 anything else, then confirm with the user before starting the next phase.
 
-## Status: Phase 4 complete; Phase 5 blocked on user go-ahead + submission endpoint details
+## Status: Phase 6 (partial) done; Phase 5 submission still blocked pending endpoint details
 
 ## What's done
 
@@ -130,6 +130,79 @@ anything else, then confirm with the user before starting the next phase.
   were. Need to ask the user for this before Phase 5 can actually
   complete.
 
+**Phase 6 (partial) — model iteration** (commit pending)
+- `recurring.py`: rule-based `recurring_flag` detector (`detect_recurring`),
+  regex over the same keyword families EDA used to measure the ~2.3% base
+  rate (`recur|preauth|subscri|auto(debit|pay|approv|renew)`,
+  case-insensitive). Wired into `infer.py::predict_fields_for_df` only --
+  overrides the model's (always-empty) recurring_flag prediction, but
+  does NOT touch how gold fields are extracted for scoring (gold must
+  keep reflecting the real annotation gap, not our rule's guess, or
+  local eval would trivially agree with itself). 12/12 new tests.
+- `diagnostics.py`: token-level confusion matrix + per-tag P/R/F1 over
+  all 8 tags (`token_confusion`, `per_tag_precision_recall`,
+  `diagnose_checkpoint`), independent of eval_harness.py's field-level
+  scoring. Built to quantify the counterparty/BANK_SERVICE_EVENT
+  confusion Phase 5 flagged qualitatively. 3/3 new tests.
+- **Investigated the Phase 5 counterparty/BANK_SERVICE_EVENT confusion
+  and it did not replicate on labeled data.** That flag came from
+  eyeballing vocabulary in unlabeled *test* predictions only. Running
+  `diagnostics.py` against the baseline checkpoint on **val** (which has
+  real gold labels) found **zero** tokens where true
+  `I-BANK_SERVICE_EVENT` got predicted as `I-COUNTERPARTY_NAME`
+  (`logs/phase6_diagnose_baseline.log`), and per-field predicted-presence
+  rates on val match gold almost exactly (counterparty 67.6% predicted
+  vs 65.2% gold; processor 13.8% vs 13.5% gold; transaction_method 69.7%
+  vs 70.9% gold). So on labeled data there was nothing to fix.
+- **The real open question is test-set presence-rate divergence, and
+  it's still unexplained.** Test's predicted-present rates (from the
+  existing baseline, before this session's changes) are far from train's
+  true rates: counterparty 39.8% predicted vs train's true 66.25%,
+  processor 42.1% vs train's true 13.10%, transaction_method 57.9% vs
+  train's true 71.69%. Checked and ruled out as explanations: bank
+  coverage (only 7/10,000 test rows have a bank never seen in train),
+  token OOV rate against train (test rows: 68.4% contain >=1 OOV token;
+  val rows: 68.3% -- essentially identical, and val still scores well),
+  sequence length (test mean 8.17 vs train 8.12 tokens), and
+  transaction_type mix (test 75.3%/24.7% DEBIT/CREDIT vs train
+  75.6%/24.4%). None of the checkable inputs explain the divergence --
+  flagged as real but **only resolvable by a live submission**, not
+  something to chase further with local-only tweaking.
+- **Redirected effort accordingly**: instead of "fixing" a confusion that
+  doesn't reproduce on labeled data, attempted the cheap, well-motivated
+  experiment that was still open -- retraining longer (baseline was only
+  3 epochs; val_loss was still dropping fast, 0.92->0.14). This did NOT
+  complete: first attempt hung indefinitely mid-setup on Hugging Face Hub
+  metadata calls (likely the same TLS-interception issue noted below,
+  triggered on the larger model.safetensors GET rather than the small
+  HEAD requests other runs tolerated); killed and retried with
+  `HF_HUB_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1` (model was already locally
+  cached, so this is safe and much faster -- worth using by default for
+  reruns going forward); second attempt was still mid-first-epoch when
+  the user's time budget (5 min) ran out, so it was killed with **no
+  checkpoint produced**. **Decision: kept `checkpoints/baseline.pt` (the
+  3-epoch Phase 5 model) as the Phase 6 model** -- nothing was lost, and
+  diagnostics gave no evidence the baseline needed fixing in the first
+  place. Retraining longer remains a legitimate thing to try later with
+  more time, using `HF_HUB_OFFLINE=1` from the start.
+- Rebuilt `predictions.json` (baseline checkpoint + recurring_flag rule).
+  `recurring_flag` now fires on 273/10,000 test transactions (2.7%,
+  matching the ~2.3-2.6% keyword base rate from EDA across all splits --
+  confirms the rule is working as intended). Other 3 fields unchanged
+  (same model, same predictions as Phase 5).
+- Re-scored on val with the rule wired in
+  (`logs/phase6_val_score.json`): `final_score_micro` dropped from the
+  Phase 5 number (0.953) to **0.703**, and `final_score_macro` from 0.969
+  to **0.719**. **This is expected, not a regression** -- the rule fires
+  on 26/1000 val examples (matching val's known ~2.6% keyword rate
+  exactly), and since val's true recurring_flag labels are always empty
+  (the Phase 1 label-gap finding), every one of those 26 hits scores as
+  a false positive locally, cratering recurring_flag's local F1 from a
+  meaningless 1.0 (empty-matches-empty on every example) down to a real
+  0.0. The other 3 fields' scores are unchanged. **Only a live submission
+  can say whether the rule's real recall on genuinely recurring test
+  transactions outweighs this local-only false-positive cost.**
+
 ## Environment notes for whoever picks this up
 - Python 3.12 venv at `.venv/` (created via `uv venv`), deps in
   `requirements.txt` (grouped by which phase first needs them — torch/
@@ -140,20 +213,28 @@ anything else, then confirm with the user before starting the next phase.
   timeout, likely same interception). See CLAUDE.md "Environment quirks".
 - Run tests: `.venv/Scripts/python.exe -m pytest -v` (12 passing as of Phase 1).
 
-## Next: unblock Phase 5, then Phase 6
-Need from the user before anything else:
-1. Explicit go-ahead to spend a real submission attempt on the baseline
-   `predictions.json` described above (exact local scores are in this file).
+## Next: unblock Phase 5, then finish Phase 6
+Still need from the user before Phase 5 can complete:
+1. Explicit go-ahead to spend a real submission attempt on
+   `predictions.json` (baseline model + rule-based recurring_flag;
+   current local scores are in `logs/phase6_val_score.json`, see above
+   for why the recurring_flag component looks artificially low locally).
 2. The actual submission API details (URL/method/auth/payload shape) --
    not present anywhere in the original brief, only the 3 dataset URLs were
-   given.
+   given. Still not provided as of this session.
 Once both are in hand: call the endpoint once, compare the server's
-per-field F1 to `logs/phase5_val_score.json`'s numbers, and adjust
-eval_harness.py's micro/macro choice (and anything else that doesn't line
-up) to match. Brief caps calibration at 1-2 attempts total.
+per-field F1 to `logs/phase6_val_score.json`'s numbers (especially
+recurring_flag's real recall, which cannot be measured locally at all),
+and adjust eval_harness.py's micro/macro choice to match. Brief caps
+calibration at 1-2 attempts total.
 
-After that: Phase 6 (model iteration) -- try a rule-based recurring_flag
-detector (mandatory per EDA finding), address the counterparty/
-BANK_SERVICE_EVENT confusion flagged above (more epochs / class weighting /
-an upgrade path), compare each change against the baseline on the
-now-calibrated local harness before keeping it.
+Remaining Phase 6 ideas, not yet done (none blocked -- just not reached):
+- Retry the longer-training experiment (10 epochs) with
+  `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` from the start and enough
+  wall-clock time (~35 min estimated for 10 epochs on CPU); compare
+  against baseline.pt on the local harness before keeping it.
+- EDA finding #5's auxiliary-feature idea: prepend `bank` +
+  `transaction_type` as lightweight context, compare against baseline.
+- The test-set presence-rate divergence noted above is still
+  unexplained and worth another look if a real submission score comes
+  back much lower than the local harness predicts.
