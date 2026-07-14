@@ -203,6 +203,50 @@ anything else, then confirm with the user before starting the next phase.
   can say whether the rule's real recall on genuinely recurring test
   transactions outweighs this local-only false-positive cost.**
 
+**Phase 5 real calibration submission** (2026-07-14, attempt 1/20, via
+Colab per assignment's `submit_predictions()` mechanism,
+`POST http://3.108.8.61:8990/submit`, multipart form-data:
+predictions.json + name/email/roll_number/college): real macro_f1 =
+**0.4994**. Full response saved to
+`logs/phase5_calibration_submission_response.json` (gitignored).
+Per-field: counterparty f1=0.292 (precision 0.42 recall 0.22),
+transaction_method f1=0.52, processor f1=0.26 (precision 0.16 -- badly
+over-firing), recurring_flag f1=0.92 (**recall 1.0** -- the rule-based
+detector worked great). `support` counts confirm test's TRUE label
+distribution matches train's closely (counterparty support/10000=65.8%
+vs train 66.25%; processor 13.6% vs 13.10%; method 71.6% vs 71.69%) --
+so the gap vs local val (~0.94-0.97) is a real MODEL problem, not a
+label-distribution or metric-definition mismatch.
+
+**Root cause found: case-sensitivity bug.** Test tokens are 51.1%
+UPPERCASE vs train/val's ~28% (val matches train almost exactly, which
+is why val never exposed this). Tokenizer is case-sensitive and
+fragments all-caps merchant names into junk subwords
+(`tokenize("PAYPAL")` -> `['PA','YP','AL']` vs `tokenize("Paypal")` ->
+`['Pay','pal']`). This plausibly explains most of the counterparty/
+processor collapse on test.
+
+**Phase 6/7 fix**: `tokenization.py::normalize_case()` lowercases tokens
+right before they hit the tokenizer (both `TransactionDataset` in
+training and `predict.py::predict_tags` at inference) -- original-case
+tokens still used everywhere else (label alignment, `extract_fields`
+output). Retrained (`checkpoints/phase7_lowercased.pt`, only **2 of 3
+planned epochs** completed under a hard time budget -- val_loss
+0.29->0.21, still improving when stopped). Rebuilt `predictions.json`:
+predicted test presence rates jumped from 39.8%/57.9%/42.1%
+(counterparty/method/processor) to **64.8%/70.5%/12.3%** -- now closely
+tracking the true rates above (65.8%/71.6%/13.6%). Strong local evidence
+the fix works; a second real submission is how to confirm it on the
+actual score.
+
+**Phase 5 eval_harness.py calibration** (done): the response's
+`"metric": "token"` fields back-solve exactly to pooled precision/recall
+over token counts (not per-example-averaged) -- confirms
+`final_score_micro` (not macro) is the right local proxy;
+`report["final_score"]` now aliases it. `"metric": "presence"` for
+recurring_flag confirms `presence_score` was already correct. Still
+open: empty-vs-empty convention (low priority, didn't explain the gap).
+
 ## Environment notes for whoever picks this up
 - Python 3.12 venv at `.venv/` (created via `uv venv`), deps in
   `requirements.txt` (grouped by which phase first needs them — torch/

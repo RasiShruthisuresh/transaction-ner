@@ -1,22 +1,37 @@
 """Local evaluation harness mirroring the server's macro-F1-across-4-fields
 metric as closely as possible from the brief's description.
 
-Two things the brief says are unspecified and must be calibrated against
-a real submission (Phase 5):
-  1. Whether counterparty/transaction_method/processor are scored with
-     micro (pooled-count) or macro (mean of per-example F1) aggregation
-     across transactions. Both are computed so a real submission's score
-     can be matched against whichever this harness produces, and the
-     harness switched over to that convention afterward.
-  2. The empty-vs-empty convention for bag-of-words F1 (both pred and
-     gold have zero tokens for a field): treated here as a perfect match
-     (P=R=F1=1.0), the most common convention, but also worth
-     calibrating -- a scorer that instead treats it as undefined/skipped
-     would produce different aggregates.
+CALIBRATED (Phase 5, first real submission, 2026-07-14): the server's
+response reports each of the 3 bag-of-words fields with
+`"metric": "token"` plus precision/recall/f1/support, e.g. counterparty
+precision=0.4237 recall=0.2228 support=6581. Back-solving
+(TP = recall*support, FP = TP/precision - TP) reproduces the reported F1
+exactly for every field, confirming these are POOLED precision/recall/F1
+over token counts summed across the whole test set -- structurally the
+same computation as `field_score_micro` below, not an average of
+per-transaction F1s. **`final_score_micro` is therefore the calibrated
+local proxy; `final_score_macro` is kept only as a documented
+alternative**, not because it's expected to match, but because it was
+already built and costs nothing to keep computing.
+
+The server's own headline number ("this_submission_macro_f1", despite
+the name) is just the plain mean of the 4 per-field F1s -- confirmed by
+recomputing it from the 4 reported field F1s in that same response
+((0.292+0.5204+0.2623+0.9231)/4 = 0.4994, matches exactly). That's the
+same shape as `final_score_micro`/`final_score_macro` below, so no
+change needed there beyond picking micro as the per-field aggregation.
 
 recurring_flag's presence-based F1 has no micro/macro ambiguity in the
 same sense (it's one binary decision per transaction, not a multiset
-comparison), so only one variant is computed for it.
+comparison) -- confirmed by the same submission, which reports it with
+`"metric": "presence"`, matching `presence_score` below exactly.
+
+Still uncalibrated: the empty-vs-empty convention for bag-of-words F1
+(treated here as a perfect match, P=R=F1=1.0) can't be distinguished
+from an "undefined/skipped" convention using the aggregate numbers alone.
+Low priority -- doesn't explain any of the gap seen in the first
+submission, see PROGRESS.md Phase 6/7 for what did (a case-sensitivity
+bug, not a metric mismatch).
 
 See EDA_FINDINGS.md sec 2: val has ZERO positive recurring_flag labels,
 so recall for that field can never be validated locally against val --
@@ -126,5 +141,6 @@ def score_predictions(gold_fields: dict[str, dict[str, str]], pred_fields: dict[
 
     report["final_score_micro"] = (sum(report[f]["micro"]["f1"] for f in BOW_FIELDS) + report["recurring_flag"]["f1"]) / 4
     report["final_score_macro"] = (sum(report[f]["macro"]["f1"] for f in BOW_FIELDS) + report["recurring_flag"]["f1"]) / 4
+    report["final_score"] = report["final_score_micro"]  # calibrated choice, see module docstring
     report["n_examples"] = len(ids)
     return report

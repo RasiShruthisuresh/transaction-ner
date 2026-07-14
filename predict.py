@@ -10,6 +10,7 @@ from __future__ import annotations
 import torch
 
 from config import ID2TAG
+from tokenization import normalize_case
 
 
 @torch.no_grad()
@@ -20,7 +21,7 @@ def predict_tags(model, tokenizer, tokens_batch: list[list[str]], device, max_le
     """
     model.eval()
     enc = tokenizer(
-        tokens_batch,
+        [normalize_case(tokens) for tokens in tokens_batch],
         is_split_into_words=True,
         truncation=True,
         max_length=max_length,

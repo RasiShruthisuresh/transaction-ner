@@ -14,6 +14,27 @@ from torch.utils.data import Dataset
 from config import TAG2ID
 
 
+def normalize_case(tokens: list[str]) -> list[str]:
+    """Lowercase tokens before they reach the tokenizer.
+
+    Phase 6 calibration submission found real test-set F1 far below what
+    val predicted (e.g. counterparty F1 0.29 on test vs 0.94 on val),
+    while gold field-presence rates (from the submission response's
+    `support` counts) matched train/val closely -- so the model's
+    predictions, not the label distribution, are what's failing. Root
+    cause: the tokenizer is case-sensitive (tokenize("PAYPAL") ->
+    ['PA','YP','AL'], vs tokenize("Paypal") -> ['Pay','pal']), and test
+    is far more UPPERCASE than train/val (51% vs ~28% of tokens) even
+    though val's casing matches train's almost exactly -- so val never
+    exposed this. Lowercasing removes casing as a spurious signal the
+    model could overfit to. Only affects what the tokenizer sees; the
+    original (cased) tokens are still used everywhere else (label
+    alignment, extract_fields output), since word count/order is
+    unchanged by lowercasing.
+    """
+    return [t.lower() for t in tokens]
+
+
 def align_labels(word_ids: list[int | None], tags: list[str]) -> list[int]:
     """Map a tokenizer's word_ids() (one entry per subword position, or
     None for special tokens like [CLS]/[SEP]/padding) to label ids.
@@ -57,7 +78,7 @@ class TransactionDataset(Dataset):
 
     def __getitem__(self, idx):
         enc = self.tokenizer(
-            self.tokens[idx],
+            normalize_case(self.tokens[idx]),
             is_split_into_words=True,
             truncation=True,
             max_length=self.max_length,

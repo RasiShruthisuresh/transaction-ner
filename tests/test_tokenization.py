@@ -8,7 +8,14 @@ import pandas as pd
 
 from config import TAG2ID
 from model import ModelConfig, build_tokenizer
-from tokenization import TransactionDataset, align_labels
+from tokenization import TransactionDataset, align_labels, normalize_case
+
+
+def test_normalize_case_lowercases_without_changing_token_count():
+    tokens = ["PAYPAL", "Inst", "xfer", "123"]
+    normalized = normalize_case(tokens)
+    assert normalized == ["paypal", "inst", "xfer", "123"]
+    assert len(normalized) == len(tokens)
 
 
 def test_align_labels_pure_logic():

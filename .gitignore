@@ -33,3 +33,6 @@ Thumbs.db
 
 # Personal reference notes (not part of the graded repo)
 APPROACH_NOTES.md
+
+# Contains PII (name/email/roll number) -- personal submission notebook, not for GitHub
+submit_colab.ipynb
