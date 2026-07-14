@@ -247,6 +247,13 @@ over token counts (not per-example-averaged) -- confirms
 recurring_flag confirms `presence_score` was already correct. Still
 open: empty-vs-empty convention (low priority, didn't explain the gap).
 
+**Phase 8 — final submission (attempt 2/20, 2026-07-14): macro_f1 = 0.8975**
+(up from 0.4994 pre-fix). Per-field F1: counterparty 0.90, transaction_method
+0.94, processor 0.82, recurring_flag 0.92 (recall 1.0). Confirms the
+case-normalization fix (Phase 7) was the right call. `best_macro_f1`
+= 0.8975. 18 attempts remaining. Response saved to
+`logs/phase8_final_submission_response.json` (gitignored).
+
 ## Environment notes for whoever picks this up
 - Python 3.12 venv at `.venv/` (created via `uv venv`), deps in
   `requirements.txt` (grouped by which phase first needs them — torch/
