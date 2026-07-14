@@ -3,7 +3,9 @@
 Read this file (and `CLAUDE.md`) at the start of any new session before doing
 anything else, then confirm with the user before starting the next phase.
 
-## Status: Phase 6 (partial) done; Phase 5 submission still blocked pending endpoint details
+## Status: ASSIGNMENT COMPLETE. All phases 0-8 done. Final submitted
+score: macro_f1 = 0.8975 (attempt 2/20, 18 remaining if further
+improvement is ever wanted -- see "possible future work" below).
 
 ## What's done
 
@@ -264,28 +266,27 @@ case-normalization fix (Phase 7) was the right call. `best_macro_f1`
   timeout, likely same interception). See CLAUDE.md "Environment quirks".
 - Run tests: `.venv/Scripts/python.exe -m pytest -v` (12 passing as of Phase 1).
 
-## Next: unblock Phase 5, then finish Phase 6
-Still need from the user before Phase 5 can complete:
-1. Explicit go-ahead to spend a real submission attempt on
-   `predictions.json` (baseline model + rule-based recurring_flag;
-   current local scores are in `logs/phase6_val_score.json`, see above
-   for why the recurring_flag component looks artificially low locally).
-2. The actual submission API details (URL/method/auth/payload shape) --
-   not present anywhere in the original brief, only the 3 dataset URLs were
-   given. Still not provided as of this session.
-Once both are in hand: call the endpoint once, compare the server's
-per-field F1 to `logs/phase6_val_score.json`'s numbers (especially
-recurring_flag's real recall, which cannot be measured locally at all),
-and adjust eval_harness.py's micro/macro choice to match. Brief caps
-calibration at 1-2 attempts total.
+## Assignment complete -- final state
+Submitted twice: attempt 1 (pre case-fix) scored macro_f1=0.4994,
+attempt 2 (post case-fix) scored macro_f1=**0.8975** and is the one that
+stands as `best_macro_f1`. `predictions.json` in the repo root is the
+exact file that produced that score. 18/20 attempts remain unused.
 
-Remaining Phase 6 ideas, not yet done (none blocked -- just not reached):
-- Retry the longer-training experiment (10 epochs) with
-  `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` from the start and enough
-  wall-clock time (~35 min estimated for 10 epochs on CPU); compare
-  against baseline.pt on the local harness before keeping it.
-- EDA finding #5's auxiliary-feature idea: prepend `bank` +
-  `transaction_type` as lightweight context, compare against baseline.
-- The test-set presence-rate divergence noted above is still
-  unexplained and worth another look if a real submission score comes
-  back much lower than the local harness predicts.
+Compared our pipeline against the assignment's own reference
+implementation (`student_pipeline.py`, shared by the user for
+reference, not committed here) -- confirmed we're not missing anything
+required for a valid submission, and did several things better than the
+naive reference: annotator reconciliation (reference trains on raw
+unreconciled 20k rows), a rule-based recurring_flag detector (reference
+has no such thing and would structurally score ~0 on that field),
+pre-submission local validation, and the case-sensitivity fix (reference
+has the same latent bug, unaddressed).
+
+## Possible future work (optional, not required)
+The reference's suggested hyperparameters (batch 128, lr 1e-4, 5 epochs,
+GPU) are much more aggressive than what we ran on CPU (batch 16, lr
+3e-5, 2 of 3 planned epochs) -- there's likely real headroom in
+counterparty (0.90) and especially processor (0.82) from training
+longer/larger if anyone picks this back up. Also still untried: EDA
+finding #5's bank/transaction_type auxiliary-feature idea. Neither is
+needed -- current score already stands.
