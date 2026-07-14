@@ -36,11 +36,27 @@ submissions start.
       test (300 train / 100 val, 2 epochs, CPU) confirms the loop runs
       cleanly: train loss 1.99→0.77, val loss 0.92→0.61, and inference
       round-trips predicted tags back to the original token count exactly.
-- [ ] Phase 4 — local eval harness
-- [ ] Phase 5 — calibration submissions
-- [ ] Phase 6 — model iteration
-- [ ] Phase 7 — final inference & submission formatting
-- [ ] Phase 8 — final submission(s) and writeup
+- [x] **Phase 4** — local eval harness: `eval_harness.py`, bag-of-words
+      micro+macro P/R/F1 for counterparty/transaction_method/processor,
+      presence P/R/F1 for recurring_flag.
+- [x] **Phase 5** — calibration submission: real submission revealed
+      macro_f1=0.4994, far below local val, despite test's true label
+      distribution matching train closely (per response `support`
+      counts). Traced to a case-sensitivity bug, not a metric mismatch.
+      `eval_harness.py` calibrated to micro (pooled) aggregation, matching
+      the response's `"metric": "token"` fields exactly.
+- [x] **Phase 6** — model iteration: rule-based `recurring_flag` detector
+      (`recurring.py`, mandatory per Phase 1 -- zero training signal
+      exists). Diagnosed and disproved a suspected counterparty/
+      BANK_SERVICE_EVENT confusion (`diagnostics.py`).
+- [x] **Phase 7** — final inference: found and fixed the case-sensitivity
+      bug (`tokenization.py::normalize_case` -- test is 51% UPPERCASE vs
+      train/val's ~28%, and the tokenizer fragments all-caps merchant
+      names into junk subwords). Retrained, rebuilt `predictions.json`.
+- [x] **Phase 8** — final submission: macro_f1 = **0.8975** (up from
+      0.4994 pre-fix), attempt 2/20. Per-field F1: counterparty 0.90,
+      transaction_method 0.94, processor 0.82, recurring_flag 0.92
+      (recall 1.0).
 
 ## Repo layout
 
