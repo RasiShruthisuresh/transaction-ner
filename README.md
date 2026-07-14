@@ -20,7 +20,12 @@ submissions start.
 
 - [x] **Phase 0** — repo setup, `data.py` ingestion (downloads + validates
       train/val/test against the documented schema)
-- [ ] Phase 1 — EDA (label distribution, scored-vs-unscored gap, inter-annotator agreement)
+- [x] **Phase 1** — EDA. Key findings (full writeup in `EDA_FINDINGS.md`):
+      `I-RECURRING_FLAG` has **zero** occurrences in train/val (rule-based
+      detection is mandatory, not optional); 3 of the 5 `annotator_id`s show
+      **exact, zero-mismatch agreement** with each other and cover 100% of
+      train/val ids, making reconciliation close to trivial (Phase 2); only
+      13% of transactions contain a `PROCESSOR` span (thin-positive class).
 - [ ] Phase 2 — label reconciliation
 - [ ] Phase 3 — baseline model (`jhu-clsp/ettin-encoder-32m` token classifier)
 - [ ] Phase 4 — local eval harness

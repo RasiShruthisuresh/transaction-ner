@@ -96,3 +96,22 @@ EXPECTED_SHAPES = {
     "val": {"rows": 2000, "unique_ids": 1000, "annotators_per_id": 2},
     "test": {"rows": 10000, "unique_ids": 10000, "annotators_per_id": 1},
 }
+
+# ---------------------------------------------------------------------------
+# Annotator pool structure (found in Phase 1 EDA, see EDA_FINDINGS.md)
+# ---------------------------------------------------------------------------
+# Of the 5 annotator_ids, these 3 agree with EACH OTHER with zero token-level
+# mismatches across every single train/val id where two of them co-annotate
+# (5,980 ids / ~48k tokens in train alone -- verified exhaustively, not
+# sampled). That's not plausible for independent human judgment calls
+# (TRANSACTION_METHOD vs PROCESSOR has no strict rule per the annotator
+# guidelines), so we treat these three as one deterministic labeling
+# process rather than three independent raters.
+#
+# The other 2 annotators (ann_3adc6b, ann_8ac1bf) show real, human-like
+# disagreement (kappa 0.60-0.82) both with the big three and with each
+# other. Every single id in train/val has at least one BIG_THREE_ANNOTATORS
+# member (the pair (ann_3adc6b, ann_8ac1bf) never co-occurs), so a
+# BIG_THREE row is always available as a reconciliation anchor.
+BIG_THREE_ANNOTATORS = {"ann_78009b", "ann_928994", "ann_f2aee8"}
+MINORITY_ANNOTATORS = {"ann_3adc6b", "ann_8ac1bf"}
