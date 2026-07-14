@@ -3,7 +3,7 @@
 Read this file (and `CLAUDE.md`) at the start of any new session before doing
 anything else, then confirm with the user before starting the next phase.
 
-## Status: Phase 1 complete, ready for Phase 2 (label reconciliation)
+## Status: Phase 3 complete, ready for Phase 4 (local eval harness)
 
 ## What's done
 
@@ -38,6 +38,45 @@ anything else, then confirm with the user before starting the next phase.
   correlation with field presence/vocabulary (bank mostly for high-volume
   banks given a long tail of 547 banks).
 
+**Phase 2 — label reconciliation** (commit `c2ef24e`)
+- `reconcile.py`: `reconcile_big_three()` is primary (one row/id from a
+  BIG_THREE_ANNOTATORS member; asserts the EDA coverage finding holds).
+  `reconcile_duplication()` and `reconcile_token_tiebreak()` kept as
+  documented, callable alternatives (not deleted) per the brief.
+- Verified: 7/7 pytest, including a real-data check that `reconcile_big_three`
+  produces exactly 10000/1000 rows for train/val with tokens matching source
+  exactly and `annotator_id` always in BIG_THREE_ANNOTATORS.
+
+**Phase 3 — baseline model** (commit pending, see below)
+- `model.py`: `TokenClassifier` = `AutoModel` (encoder swappable via
+  `ModelConfig.model_name`, default `jhu-clsp/ettin-encoder-32m`, a
+  ModernBERT-arch 31.9M-param encoder) + `Dropout` + `Linear` head. Built as
+  a manual head rather than `AutoModelForTokenClassification` because not
+  every candidate encoder is guaranteed to have a registered token-classification
+  head class.
+- `tokenization.py`: `align_labels()` puts the label on each original
+  token's FIRST subword only, -100 (ignored) elsewhere — standard HF
+  recipe, chosen so loss isn't inflated by tokens that happen to split into
+  more subpieces, and so inference only needs to read one prediction per
+  original token.
+- `train.py`: plain PyTorch loop (not HF Trainer, for transparency/fewer
+  moving parts), CLI-configurable (encoder, lr, batch size, epochs,
+  `--max-train-examples`/`--max-val-examples` for smoke tests), logs to
+  `--log-file` under `logs/` per CLAUDE.md.
+- `predict.py`: batched inference, realigns predictions back to one tag per
+  original token via each token's first-subword position (symmetric with
+  `align_labels`).
+- Verified: smoke test (300 train / 100 val, 2 epochs, CPU,
+  `logs/phase3_smoke.log`) — loop runs cleanly, train loss 1.99→0.77, val
+  loss 0.92→0.61. Followed by an inference sanity check loading the smoke
+  checkpoint and confirming predicted tag lists match original token counts
+  exactly on 5 val examples, with non-degenerate (varied) predicted tags.
+  23/23 pytest passing overall (added `tests/test_tokenization.py` for the
+  alignment logic specifically).
+- Not yet trained on full data — that's deferred to Phase 6 (model
+  iteration) where baseline-vs-upgrade comparisons happen together, since
+  Phase 4 (local eval harness) needs to exist first to actually score them.
+
 ## Environment notes for whoever picks this up
 - Python 3.12 venv at `.venv/` (created via `uv venv`), deps in
   `requirements.txt` (grouped by which phase first needs them — torch/
@@ -48,15 +87,24 @@ anything else, then confirm with the user before starting the next phase.
   timeout, likely same interception). See CLAUDE.md "Environment quirks".
 - Run tests: `.venv/Scripts/python.exe -m pytest -v` (12 passing as of Phase 1).
 
-## Next: Phase 2 — label reconciliation
-Plan (per EDA_FINDINGS.md §"How this changes the training strategy"):
-- Primary strategy: for each train/val id, take the annotation row from a
-  "big three" annotator (`config.BIG_THREE_ANNOTATORS`) as gold. Since every
-  id has ≥1 big-three annotator and all big-three pairs already agree
-  exactly, this needs no per-token tie-breaking logic.
-- Keep the duplication-as-augmentation and token-level-tie-break code paths
-  available (not deleted) so the alternative can be inspected/compared, per
-  the brief's request — but they are not the primary path.
-- Unit test to write: reconciled dataset has exactly 10,000 rows (one per
-  train id) / 1,000 rows (val), tokens match the source id's tokens exactly,
-  and every reconciled row's annotator_id is in BIG_THREE_ANNOTATORS.
+## Next: Phase 4 — local eval harness
+Must mirror the server metric as closely as possible before it's trusted for
+model selection (see original brief step 5):
+- Bag-of-words token-level precision/recall/F1 (case/whitespace-insensitive)
+  for counterparty/transaction_method/processor, comparing predicted vs gold
+  token multisets per transaction. Build BOTH micro (pooled counts) and
+  macro (mean of per-example F1) variants since the server's aggregation
+  choice isn't specified.
+- Presence-based binary F1 for recurring_flag (non-empty prediction vs
+  non-empty gold) — note per EDA_FINDINGS.md §2 that val has zero positive
+  recurring_flag examples, so local recall for a rule-based detector can't
+  be measured against val at all; only real signal comes from a Phase 5
+  calibration submission.
+- Final score = plain average of the four field F1s.
+- Test with a hand-constructed synthetic example with known correct P/R/F1,
+  and assert the code reproduces it exactly — this phase's "test" is that
+  assertion passing.
+- Decide + document how val (also 2-annotator) gets scored: against the
+  reconciled (big-three) labels is the natural choice given Phase 2's
+  finding, but note it in the harness code explicitly since it's a real
+  design decision a reviewer will ask about.

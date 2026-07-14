@@ -26,8 +26,16 @@ submissions start.
       **exact, zero-mismatch agreement** with each other and cover 100% of
       train/val ids, making reconciliation close to trivial (Phase 2); only
       13% of transactions contain a `PROCESSOR` span (thin-positive class).
-- [ ] Phase 2 — label reconciliation
-- [ ] Phase 3 — baseline model (`jhu-clsp/ettin-encoder-32m` token classifier)
+- [x] **Phase 2** — label reconciliation: `reconcile_big_three()` (primary)
+      takes the BIG_THREE_ANNOTATORS row as gold per id; `reconcile_duplication()`
+      and `reconcile_token_tiebreak()` kept as documented alternatives.
+- [x] **Phase 3** — baseline model: `model.py` (AutoModel + linear head,
+      encoder swappable via `ModelConfig`), `tokenization.py` (subword/label
+      alignment), `train.py` (plain PyTorch training loop), `predict.py`
+      (batched inference, predictions realigned to original tokens). Smoke
+      test (300 train / 100 val, 2 epochs, CPU) confirms the loop runs
+      cleanly: train loss 1.99→0.77, val loss 0.92→0.61, and inference
+      round-trips predicted tags back to the original token count exactly.
 - [ ] Phase 4 — local eval harness
 - [ ] Phase 5 — calibration submissions
 - [ ] Phase 6 — model iteration

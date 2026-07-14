@@ -12,10 +12,11 @@ seaborn==0.13.2
 # --- Phase 3+: model training -------------------------------------------
 # Installed just before Phase 3 rather than up front -- torch is a large,
 # slow download and Phases 0-2 (ingestion/EDA/reconciliation) don't need it.
-torch>=2.3
-transformers>=4.44
-accelerate>=0.33
-seqeval>=1.2       # span-level NER metrics, useful as a secondary sanity check
+torch==2.13.0
+transformers==5.13.1
+accelerate==1.14.0
+seqeval==1.2.2      # span-level NER metrics, useful as a secondary sanity check
+pip-system-certs==5.3  # this network's TLS interception breaks the default cert bundle; patches ssl to trust the system store
 
 # --- Notebook deliverable -------------------------------------------------
 jupyter>=1.0
