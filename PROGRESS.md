@@ -3,7 +3,7 @@
 Read this file (and `CLAUDE.md`) at the start of any new session before doing
 anything else, then confirm with the user before starting the next phase.
 
-## Status: Phase 3 complete, ready for Phase 4 (local eval harness)
+## Status: Phase 4 complete; Phase 5 blocked on user go-ahead + submission endpoint details
 
 ## What's done
 
@@ -77,6 +77,59 @@ anything else, then confirm with the user before starting the next phase.
   iteration) where baseline-vs-upgrade comparisons happen together, since
   Phase 4 (local eval harness) needs to exist first to actually score them.
 
+**Phase 4 — local eval harness** (commit `9b6f196`)
+- `fields.py::extract_fields`: tokens+tags -> the 4 scored field strings
+  (non-contiguous spans concatenated in order -- documented as
+  bag-of-words-safe since scoring is multiset-based).
+- `eval_harness.py`: bag-of-words P/R/F1 (case/whitespace-insensitive) for
+  counterparty/transaction_method/processor, BOTH micro (pooled) and macro
+  (mean of per-example F1) variants since the server's aggregation choice
+  is unspecified; presence-based P/R/F1 for recurring_flag. Final score =
+  mean of the 4 field F1s (computed both ways).
+- Verified against a hand-worked synthetic example (exact expected P/R/F1
+  computed by hand in the test docstring): macro_f1=0.45, micro_f1=8/11,
+  presence f1=0.5, all matched exactly. 9/9 new tests, 32/32 total.
+
+**Phase 5 — calibration submission (IN PROGRESS, blocked)** (commit `17c52aa`)
+- `infer.py`: `score_on_val()` (checkpoint -> eval_harness report on
+  reconciled val) and `build_predictions_json()` (checkpoint -> validated
+  predictions.json for test).
+- Trained a real baseline (not the Phase 3 smoke run): full reconciled
+  train/val, 3 epochs, CPU (~10 min), `logs/phase5_baseline_train.log`.
+  val_loss 0.92 -> 0.14.
+- Local val score (`logs/phase5_val_score.json`, gitignored):
+  final_score_macro=0.969, final_score_micro=0.953. **Caveat**:
+  recurring_flag reads as a trivial perfect 1.0 only because val has zero
+  positive examples (predicts nothing, matches nothing present) -- this
+  number carries NO information about real recurring_flag recall; only a
+  live submission can measure that.
+- `predictions.json` built for all 10,000 test ids and passed
+  `validate_predictions` (exact id match, all 4 fields present, no
+  nulls). Present locally but **not committed** -- treated as a working
+  file until Phase 7/8 picks a final model.
+- **Sanity-check flag**: test-set predicted field presence rates
+  diverge from train's actual rates -- processor predicted-present on
+  42% of test transactions vs. train's true 13.1%; counterparty
+  predicted-present on 40% vs. train's true 66%. Vocabulary inspection
+  (top predicted tokens) shows no degenerate failure (diverse, plausible
+  tokens per field -- processor top tokens are real processor names like
+  "intuit"/"paypal"/"venmo"), but counterparty's top predicted tokens
+  include "withdrawal"/"external"/"deposit", which look more like
+  BANK_SERVICE_EVENT vocabulary than counterparty names -- i.e. the
+  3-epoch baseline plausibly confuses these two classes some of the
+  time. Not treated as a blocking bug (pipeline is unit-tested
+  end-to-end and the round-trip/shape checks all pass) -- flagged as a
+  real baseline-quality issue for Phase 6 to address, and as a reason
+  the calibration submission's job is exactly to tell us how much this
+  matters for the real score.
+- **BLOCKED**: have not called the real submission API. Two blockers:
+  (1) hard rule requires explicit user go-ahead with the exact payload
+  stated first (not yet asked/granted in-session at the time of writing);
+  (2) the actual submission endpoint (URL/method/auth/payload shape) was
+  never given anywhere in the original brief -- only the 3 dataset URLs
+  were. Need to ask the user for this before Phase 5 can actually
+  complete.
+
 ## Environment notes for whoever picks this up
 - Python 3.12 venv at `.venv/` (created via `uv venv`), deps in
   `requirements.txt` (grouped by which phase first needs them — torch/
@@ -87,24 +140,20 @@ anything else, then confirm with the user before starting the next phase.
   timeout, likely same interception). See CLAUDE.md "Environment quirks".
 - Run tests: `.venv/Scripts/python.exe -m pytest -v` (12 passing as of Phase 1).
 
-## Next: Phase 4 — local eval harness
-Must mirror the server metric as closely as possible before it's trusted for
-model selection (see original brief step 5):
-- Bag-of-words token-level precision/recall/F1 (case/whitespace-insensitive)
-  for counterparty/transaction_method/processor, comparing predicted vs gold
-  token multisets per transaction. Build BOTH micro (pooled counts) and
-  macro (mean of per-example F1) variants since the server's aggregation
-  choice isn't specified.
-- Presence-based binary F1 for recurring_flag (non-empty prediction vs
-  non-empty gold) — note per EDA_FINDINGS.md §2 that val has zero positive
-  recurring_flag examples, so local recall for a rule-based detector can't
-  be measured against val at all; only real signal comes from a Phase 5
-  calibration submission.
-- Final score = plain average of the four field F1s.
-- Test with a hand-constructed synthetic example with known correct P/R/F1,
-  and assert the code reproduces it exactly — this phase's "test" is that
-  assertion passing.
-- Decide + document how val (also 2-annotator) gets scored: against the
-  reconciled (big-three) labels is the natural choice given Phase 2's
-  finding, but note it in the harness code explicitly since it's a real
-  design decision a reviewer will ask about.
+## Next: unblock Phase 5, then Phase 6
+Need from the user before anything else:
+1. Explicit go-ahead to spend a real submission attempt on the baseline
+   `predictions.json` described above (exact local scores are in this file).
+2. The actual submission API details (URL/method/auth/payload shape) --
+   not present anywhere in the original brief, only the 3 dataset URLs were
+   given.
+Once both are in hand: call the endpoint once, compare the server's
+per-field F1 to `logs/phase5_val_score.json`'s numbers, and adjust
+eval_harness.py's micro/macro choice (and anything else that doesn't line
+up) to match. Brief caps calibration at 1-2 attempts total.
+
+After that: Phase 6 (model iteration) -- try a rule-based recurring_flag
+detector (mandatory per EDA finding), address the counterparty/
+BANK_SERVICE_EVENT confusion flagged above (more epochs / class weighting /
+an upgrade path), compare each change against the baseline on the
+now-calibrated local harness before keeping it.
